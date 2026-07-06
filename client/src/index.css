@@ -1,0 +1,149 @@
+@import url('https://fonts.googleapis.com/css2?family=Amiri:ital,wght@0,400;0,700;1,400;1,700&family=Inter:wght@400;500;600;700;800&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Amiri+Quran&family=Scheherazade+New:wght@400;700&family=Noto+Sans+Arabic:wght@400;500;600;700;800&display=swap');
+@import "tailwindcss";
+
+@variant dark (&:where(.dark, .dark *));
+
+::-webkit-scrollbar { width: 6px; height: 6px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: #40916C; border-radius: 99px; }
+::-webkit-scrollbar-thumb:hover { background: #2D6A4F; }
+.dark ::-webkit-scrollbar-thumb { background: #2D6A4F; }
+.dark ::-webkit-scrollbar-thumb:hover { background: #40916C; }
+
+input[type=number]::-webkit-outer-spin-button,
+input[type=number]::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
+input[type=number] { -moz-appearance: textfield; }
+
+html { scroll-behavior: smooth; }
+
+body {
+  font-family: 'Inter', sans-serif;
+  background-color: #f9f9ff;
+  color: #151c27;
+}
+
+.dark body {
+  background-color: #111827;
+  color: #f9fafb;
+}
+
+.dark .sacred-shadow {
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.35);
+}
+
+.arabic {
+  font-family: 'Amiri', serif;
+  direction: rtl;
+  line-height: 1.8;
+}
+
+html[lang='ar'] body {
+  font-family: 'Noto Sans Arabic', 'Inter', sans-serif;
+}
+
+.mushaf-text {
+  font-family: 'Amiri Quran', 'Scheherazade New', serif;
+  direction: rtl;
+  text-align: justify;
+  text-justify: inter-word;
+  line-height: 2.2;
+  font-size: clamp(22px, 2.4vw, 30px);
+  word-spacing: 0.05em;
+}
+
+.mushaf-basmala {
+  font-family: 'Amiri Quran', 'Scheherazade New', serif;
+  text-align: center;
+  font-size: clamp(24px, 2.6vw, 32px);
+  line-height: 2;
+}
+
+.mushaf-surah-name {
+  font-family: 'Amiri Quran', 'Scheherazade New', serif;
+}
+
+.sacred-pattern {
+  background-image: url("data:image/svg+xml,%3Csvg width='60' height='60' viewBox='0 0 60 60' xmlns='http://www.w3.org/2000/svg'%3E%3Cg fill='none' fill-rule='evenodd'%3E%3Cg fill='%23064e3b' fill-opacity='0.04'%3E%3Cpath d='M29 5.834V0h2v5.834l4.127-4.127 1.414 1.414-4.127 4.127H38v2h-5.586l4.127 4.127-1.414 1.414L31 10.66V16h-2v-5.339l-4.127 4.127-1.414-1.414 4.127-4.127H22v-2h5.586l-4.127-4.127 1.414-1.414L29 5.834zM0 31v-2h5.586l-4.127-4.127 1.414-1.414 4.127 4.127V22h2v5.586l4.127-4.127 1.414 1.414-4.127 4.127H16v2h-5.586l4.127 4.127-1.414 1.414-4.127-4.127V38h-2v-5.586l-4.127 4.127-1.414-1.414 4.127-4.127H0zm60 0h-5.586l4.127 4.127-1.414 1.414-4.127-4.127V38h-2v-5.586l-4.127 4.127-1.414-1.414 4.127-4.127H44v-2h5.586l-4.127-4.127 1.414-1.414 4.127 4.127V22h2v5.586l4.127-4.127 1.414 1.414-4.127 4.127H60v2zM29 65.834V60h2v5.834l4.127-4.127 1.414 1.414-4.127 4.127H38v2h-5.586l4.127 4.127-1.414 1.414L31 70.66V76h-2v-5.339l-4.127 4.127-1.414-1.414 4.127-4.127H22v-2h5.586l-4.127-4.127 1.414-1.414L29 65.834z'/%3E%3C/g%3E%3C/g%3E%3C/svg%3E");
+}
+
+.sacred-shadow {
+  box-shadow: 0 4px 20px rgba(6, 78, 59, 0.08);
+}
+
+@keyframes dot-bounce {
+  0%, 80%, 100% {
+    transform: translateY(0);
+    opacity: 0.35;
+  }
+  40% {
+    transform: translateY(-6px);
+    opacity: 1;
+  }
+}
+
+.driver-popover.qt-tour {
+  border-radius: 14px;
+  padding: 18px;
+  box-shadow: 0 12px 40px rgba(6, 78, 59, 0.18);
+  max-width: 320px;
+  background-color: #ffffff;
+  color: #404944;
+}
+
+.driver-popover.qt-tour,
+.driver-popover.qt-tour * { font-family: inherit; }
+.driver-popover.qt-tour .driver-popover-title {
+  font-size: 1rem;
+  font-weight: 700;
+  color: #003527;
+}
+.driver-popover.qt-tour .driver-popover-description {
+  font-size: 0.875rem;
+  line-height: 1.6;
+  color: #404944;
+}
+.driver-popover.qt-tour .driver-popover-progress-text {
+  font-size: 0.72rem;
+  color: #707974;
+}
+.driver-popover.qt-tour .driver-popover-close-btn { color: #9aa3a0; }
+.driver-popover.qt-tour .driver-popover-close-btn:hover { color: #003527; }
+.driver-popover.qt-tour .driver-popover-footer button {
+  text-shadow: none;
+  border-radius: 8px;
+  padding: 6px 14px;
+  font-size: 0.78rem;
+  font-weight: 600;
+}
+.driver-popover.qt-tour .driver-popover-next-btn {
+  background-color: #003527;
+  color: #ffffff;
+  border: 1px solid #003527;
+}
+.driver-popover.qt-tour .driver-popover-next-btn:hover { background-color: #064e3b; }
+.driver-popover.qt-tour .driver-popover-prev-btn {
+  background-color: transparent;
+  color: #404944;
+  border: 1px solid #bfc9c3;
+}
+
+.dark .driver-popover.qt-tour { background-color: #1f2937; color: #d1d5db; }
+.dark .driver-popover.qt-tour .driver-popover-title { color: #f3f4f6; }
+.dark .driver-popover.qt-tour .driver-popover-description { color: #d1d5db; }
+.dark .driver-popover.qt-tour .driver-popover-progress-text { color: #9ca3af; }
+.dark .driver-popover.qt-tour .driver-popover-close-btn { color: #9ca3af; }
+.dark .driver-popover.qt-tour .driver-popover-close-btn:hover { color: #f3f4f6; }
+.dark .driver-popover.qt-tour .driver-popover-prev-btn { color: #d1d5db; border-color: #4b5563; }
+.dark .driver-popover.qt-tour .driver-popover-prev-btn:hover { background-color: rgba(255, 255, 255, 0.06); }
+
+.dark .driver-popover.qt-tour .driver-popover-arrow-side-bottom { border-bottom-color: #1f2937; }
+.dark .driver-popover.qt-tour .driver-popover-arrow-side-top { border-top-color: #1f2937; }
+.dark .driver-popover.qt-tour .driver-popover-arrow-side-left { border-left-color: #1f2937; }
+.dark .driver-popover.qt-tour .driver-popover-arrow-side-right { border-right-color: #1f2937; }
+
+html[dir="rtl"] .driver-popover.qt-tour .driver-popover-close-btn { right: auto; left: 0; }
+html[dir="rtl"] .driver-popover.qt-tour .driver-popover-navigation-btns button + button {
+  margin-left: 0;
+  margin-right: 4px;
+}

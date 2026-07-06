@@ -1,0 +1,874 @@
+const UserProgress = require('../models/UserProgress');
+const QuranMetadata = require('../models/QuranMetadata');
+const User = require('../models/User');
+
+const getDateString = (date) => new Date(date).toISOString().split('T')[0];
+
+const MS_PER_DAY = 86400000;
+const DAY_NAMES = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+
+const computeDailyReviewTarget = (totalMemorized, reviewIntensity) => {
+  if (totalMemorized === 0) return 0;
+  if (totalMemorized === 604) {
+    const hafizSchedule = { light: 40, standard: 60, strong: Math.ceil(604 / 7) };
+    return hafizSchedule[reviewIntensity] || hafizSchedule.standard;
+  }
+  if (totalMemorized < 3) return totalMemorized;
+  const cycleDays = { light: 14, standard: 10, strong: 7 }[reviewIntensity] || 10;
+  return Math.min(Math.ceil(totalMemorized / cycleDays), 40);
+};
+
+const computeNewPageTargetForDate = (dailyNewPages, planStartDate, targetDate) => {
+  const start = new Date(planStartDate).getTime();
+  const target = new Date(targetDate).getTime();
+  const daysPassed = Math.floor((target - start) / MS_PER_DAY);
+  const assignedToday     = Math.ceil(dailyNewPages * (daysPassed + 1));
+  const assignedYesterday = Math.ceil(dailyNewPages * daysPassed);
+  return Math.max(0, assignedToday - assignedYesterday);
+};
+
+const isStreakContinued = (lastActiveDate, offDays) => {
+  if (!lastActiveDate) return false;
+  const lastUTC = new Date(lastActiveDate);
+  lastUTC.setUTCHours(0, 0, 0, 0);
+  const todayUTC = new Date();
+  todayUTC.setUTCHours(0, 0, 0, 0);
+  const daysDiff = Math.round((todayUTC - lastUTC) / MS_PER_DAY);
+  if (daysDiff <= 1) return true;
+  for (let d = 1; d < daysDiff; d++) {
+    const checkDay = new Date(lastUTC.getTime() + d * MS_PER_DAY).getUTCDay();
+    if (!offDays.includes(checkDay)) return false;
+  }
+  return true;
+};
+
+const getMetadataMap = async (pageNumbers) => {
+  if (!pageNumbers.length) return {};
+  const records = await QuranMetadata.find({ pageNumber: { $in: pageNumbers } });
+  return Object.fromEntries(records.map(r => [r.pageNumber, r]));
+};
+
+const buildProgressSummary = async (user) => {
+  const userId = user._id;
+  const todayString = getDateString(new Date());
+  const offDays = user.offDays || [];
+  const isOffDay = offDays.includes(new Date().getUTCDay());
+
+  const allMemorizedPages = await UserProgress.find(
+    { userId, status: 'memorized' },
+    { pageNumber: 1, memorizedDate: 1, lastReviewedDate: 1 }
+  ).sort({ lastReviewedDate: 1, pageNumber: 1 });
+
+  const memorizedPageNumbers = new Set(allMemorizedPages.map(p => p.pageNumber));
+  const totalMemorized = allMemorizedPages.length;
+  const isHafiz = totalMemorized === 604;
+  const percentage = parseFloat(((totalMemorized / 604) * 100).toFixed(1));
+
+  let targetNewPages = 0;
+  if (!isHafiz && !user.pauseNewMemorization && !isOffDay) {
+    const planStart = user.planStartDate || user.createdAt;
+    targetNewPages = computeNewPageTargetForDate(user.dailyNewPages || 1, planStart, new Date());
+  }
+  const newPagesCompletedToday = allMemorizedPages.filter(
+    p => p.memorizedDate && getDateString(p.memorizedDate) === todayString
+  ).length;
+  const remainingNewPages = Math.max(0, targetNewPages - newPagesCompletedToday);
+
+  const newPageNumbers = [];
+  for (let page = 1; page <= 604 && newPageNumbers.length < remainingNewPages; page++) {
+    if (!memorizedPageNumbers.has(page)) newPageNumbers.push(page);
+  }
+
+  let reviewsDueToday = 0;
+  if (!isOffDay) {
+    const dailyReviewTarget = user.cycleReviewCount !== null && user.cycleReviewCount !== undefined
+      ? user.cycleReviewCount
+      : computeDailyReviewTarget(totalMemorized, user.reviewIntensity || 'standard');
+
+    const planStartDateString = getDateString(user.planStartDate || user.createdAt);
+    const maxRecent = user.recentReviewCount !== null && user.recentReviewCount !== undefined
+      ? user.recentReviewCount
+      : Math.max(3, Math.min(Math.ceil((user.dailyNewPages || 1) * 3), 6));
+    const recentPool = allMemorizedPages
+      .filter(p => p.memorizedDate
+        && getDateString(p.memorizedDate) !== todayString
+        && getDateString(p.memorizedDate) >= planStartDateString)
+      .sort((a, b) => new Date(b.memorizedDate) - new Date(a.memorizedDate))
+      .slice(0, maxRecent);
+    const recentEligibleNums = new Set(recentPool.map(p => p.pageNumber));
+
+    const pagesForReview = allMemorizedPages.filter(
+      p => (!p.memorizedDate || getDateString(p.memorizedDate) !== todayString)
+        && !recentEligibleNums.has(p.pageNumber)
+    );
+    const cycleCompletedToday = pagesForReview.filter(
+      p => p.lastReviewedDate && getDateString(p.lastReviewedDate) === todayString
+    ).length;
+    const cyclePending = pagesForReview.filter(
+      p => !p.lastReviewedDate || getDateString(p.lastReviewedDate) !== todayString
+    ).length;
+    const cycleDue = Math.min(Math.max(0, dailyReviewTarget - cycleCompletedToday), cyclePending);
+
+    const recentDue = recentPool.filter(p =>
+      !(p.lastReviewedDate && getDateString(p.lastReviewedDate) === todayString)
+    ).length;
+
+    reviewsDueToday = cycleDue + recentDue;
+  }
+
+  return {
+    name: user.name,
+    dailyNewPages: user.dailyNewPages || 1,
+    isOffDay,
+    isHafiz,
+    currentStreak: user.currentStreak || 0,
+    totalMemorized,
+    totalPages: 604,
+    pagesLeft: 604 - totalMemorized,
+    percentage,
+    newPagesDueToday: newPageNumbers.length,
+    newPageNumbers,
+    reviewsDueToday,
+  };
+};
+
+exports.buildProgressSummary = buildProgressSummary;
+
+exports.completeOnboarding = async (req, res) => {
+  try {
+    const userId = req.user._id;
+    const { memorizedPages, dailyNewPages } = req.body;
+
+    const dailyGoal = Math.min(Math.max(parseFloat(dailyNewPages) || 1, 0.5), 10);
+
+    await User.findByIdAndUpdate(userId, {
+      dailyNewPages: dailyGoal,
+      onboardingComplete: true,
+      planStartDate: new Date(),
+    });
+
+    if (memorizedPages && memorizedPages.length > 0) {
+      const yesterday = new Date();
+      yesterday.setUTCHours(0, 0, 0, 0);
+      yesterday.setDate(yesterday.getDate() - 1);
+
+      const bulkOps = memorizedPages.map(pageNumber => ({
+        updateOne: {
+          filter: { userId, pageNumber },
+          update: {
+            $set: {
+              userId,
+              pageNumber,
+              status: 'memorized',
+              memorizedDate: yesterday,
+              lastReviewedDate: yesterday,
+              reviewCount: 0,
+            },
+          },
+          upsert: true,
+        },
+      }));
+
+      await UserProgress.bulkWrite(bulkOps);
+    }
+
+    res.status(200).json({
+      success: true,
+      message: 'Onboarding completed successfully',
+      data: {
+        dailyNewPages: dailyGoal,
+        memorizedCount: memorizedPages?.length || 0,
+      },
+    });
+  } catch (error) {
+    console.error('Onboarding error:', error);
+    res.status(500).json({ success: false, message: 'Error completing onboarding', error: error.message });
+  }
+};
+
+exports.getTodayTasks = async (req, res) => {
+  try {
+    const userId = req.user._id;
+    const user = await User.findById(userId);
+
+    const todayString = getDateString(new Date());
+    const offDays = user.offDays || [];
+    const ignoreOffDay = req.query.ignoreOffDay === 'true';
+
+    if (!ignoreOffDay && offDays.includes(new Date().getUTCDay())) {
+      const totalMemorized = await UserProgress.countDocuments({ userId, status: 'memorized' });
+
+      if (user.lastActiveDate && getDateString(user.lastActiveDate) !== todayString
+          && isStreakContinued(user.lastActiveDate, offDays)) {
+        await User.findByIdAndUpdate(userId, { lastActiveDate: new Date() });
+      }
+
+      return res.status(200).json({
+        success: true,
+        data: {
+          isOffDay: true,
+          isHafiz: totalMemorized === 604,
+          newPages: [], reviewPages: [], extraNewPages: [], extraReviewPages: [],
+          recentReviewPages: [], continuationPage: null,
+          stats: {
+            totalMemorized, totalPages: 604,
+            percentage: parseFloat(((totalMemorized / 604) * 100).toFixed(1)),
+            currentStreak: user.currentStreak || 0,
+            dailyNewPages: user.dailyNewPages || 1,
+            reviewIntensity: user.reviewIntensity || 'standard',
+            recentReviewCount: user.recentReviewCount ?? null,
+            cycleReviewCount: user.cycleReviewCount ?? null,
+            newPagesCompletedToday: 0, reviewsCompletedToday: 0,
+            targetNewPages: 0, dailyReviewTarget: 0,
+            newMemorizationComplete: true, reviewComplete: true,
+            todayComplete: true, isHafiz: totalMemorized === 604,
+          },
+        },
+      });
+    }
+
+    const allMemorizedPages = await UserProgress.find({ userId, status: 'memorized' })
+      .sort({ lastReviewedDate: 1, pageNumber: 1 });
+
+    const memorizedPageNumbers = new Set(allMemorizedPages.map(p => p.pageNumber));
+    const totalMemorized = allMemorizedPages.length;
+    const isHafiz = totalMemorized === 604;
+
+    const dailyReviewTarget = user.cycleReviewCount !== null && user.cycleReviewCount !== undefined
+      ? user.cycleReviewCount
+      : computeDailyReviewTarget(totalMemorized, user.reviewIntensity || 'standard');
+
+    let targetNewPages = 0;
+    if (!isHafiz && !user.pauseNewMemorization) {
+      const planStart = user.planStartDate || user.createdAt;
+      targetNewPages = computeNewPageTargetForDate(user.dailyNewPages || 1, planStart, new Date());
+    }
+
+    const newPagesCompletedToday = allMemorizedPages.filter(
+      p => p.memorizedDate && getDateString(p.memorizedDate) === todayString
+    ).length;
+
+    const remainingNewPages = Math.max(0, targetNewPages - newPagesCompletedToday);
+
+    const newPageNums = [];
+    if (remainingNewPages > 0) {
+      for (let page = 1; page <= 604; page++) {
+        if (!memorizedPageNumbers.has(page)) {
+          newPageNums.push(page);
+          if (newPageNums.length >= remainingNewPages) break;
+        }
+      }
+    }
+
+    const extraNewPageNums = [];
+    for (let page = 1; page <= 604 && extraNewPageNums.length < 3; page++) {
+      if (!memorizedPageNumbers.has(page) && !newPageNums.includes(page)) {
+        extraNewPageNums.push(page);
+      }
+    }
+
+    const planStartDateString = getDateString(user.planStartDate || user.createdAt);
+    const maxRecent = user.recentReviewCount !== null && user.recentReviewCount !== undefined
+      ? user.recentReviewCount
+      : Math.max(3, Math.min(Math.ceil((user.dailyNewPages || 1) * 3), 6));
+    const recentPool = allMemorizedPages
+      .filter(p => p.memorizedDate
+        && getDateString(p.memorizedDate) !== todayString
+        && getDateString(p.memorizedDate) >= planStartDateString)
+      .sort((a, b) => new Date(b.memorizedDate) - new Date(a.memorizedDate))
+      .slice(0, maxRecent);
+
+    const recentEligibleNums = new Set(recentPool.map(p => p.pageNumber));
+
+    const pagesForReview = allMemorizedPages.filter(
+      p => (!p.memorizedDate || getDateString(p.memorizedDate) !== todayString)
+        && !recentEligibleNums.has(p.pageNumber)
+    );
+
+    if (user.cycleReviewStartPage) {
+      const startPg = user.cycleReviewStartPage;
+
+      const rotatedIndex = (pageNumber) => ((pageNumber - startPg) % 604 + 604) % 604;
+      pagesForReview.sort((a, b) => {
+        const aDay = a.lastReviewedDate ? getDateString(a.lastReviewedDate) : '';
+        const bDay = b.lastReviewedDate ? getDateString(b.lastReviewedDate) : '';
+        if (aDay !== bDay) return aDay < bDay ? -1 : 1;
+        return rotatedIndex(a.pageNumber) - rotatedIndex(b.pageNumber);
+      });
+    }
+
+    const reviewsCompletedToday = pagesForReview.filter(
+      p => p.lastReviewedDate && getDateString(p.lastReviewedDate) === todayString
+    ).length;
+
+    const remainingReviews = Math.max(0, dailyReviewTarget - reviewsCompletedToday);
+
+    const pendingReviews = pagesForReview.filter(
+      p => !p.lastReviewedDate || getDateString(p.lastReviewedDate) !== todayString
+    );
+
+    const reviewPages = pendingReviews.slice(0, remainingReviews);
+    const extraReviewPages = pendingReviews.slice(remainingReviews, remainingReviews + 3);
+
+    const cappedRecentPages = recentPool
+      .filter(p => !(p.lastReviewedDate && getDateString(p.lastReviewedDate) === todayString))
+      .sort((a, b) => a.pageNumber - b.pageNumber);
+
+    const cycleReviewTarget = Math.min(dailyReviewTarget, pagesForReview.length);
+    const recentReviewTarget = recentPool.length;
+    const dailyReviewTotal = cycleReviewTarget + recentReviewTarget;
+
+    let continuationPageNum = null;
+    if (targetNewPages === 0 && !isHafiz) {
+      const sortedByMemDate = [...allMemorizedPages]
+        .filter(p => p.memorizedDate && getDateString(p.memorizedDate) !== todayString)
+        .sort((a, b) => new Date(b.memorizedDate) - new Date(a.memorizedDate));
+      if (sortedByMemDate.length > 0) {
+        continuationPageNum = sortedByMemDate[0].pageNumber;
+      }
+    }
+
+    const allPageNumsNeeded = [
+      ...newPageNums, ...extraNewPageNums,
+      ...reviewPages.map(p => p.pageNumber),
+      ...extraReviewPages.map(p => p.pageNumber),
+      ...cappedRecentPages.map(p => p.pageNumber),
+      ...(continuationPageNum ? [continuationPageNum] : []),
+    ];
+    const metaMap = await getMetadataMap(allPageNumsNeeded);
+
+    const toNewPageDto = (pageNum) => {
+      const meta = metaMap[pageNum];
+      return {
+        pageNumber: pageNum,
+        juzNumber: meta?.juzNumber || 1,
+        surahName: meta?.surahName || 'Unknown',
+        surahNameArabic: meta?.surahNameArabic || '',
+        surahs: meta?.surahs ?? [{ name: meta?.surahName ?? 'Unknown', nameArabic: meta?.surahNameArabic ?? '' }],
+      };
+    };
+
+    const toReviewPageDto = (progress) => {
+      const meta = metaMap[progress.pageNumber];
+      return {
+        pageNumber: progress.pageNumber,
+        juzNumber: meta?.juzNumber || 1,
+        surahName: meta?.surahName || 'Unknown',
+        surahNameArabic: meta?.surahNameArabic || '',
+        surahs: meta?.surahs ?? [{ name: meta?.surahName ?? 'Unknown', nameArabic: meta?.surahNameArabic ?? '' }],
+        lastReviewedDate: progress.lastReviewedDate,
+        reviewCount: progress.reviewCount || 0,
+      };
+    };
+
+    const planStartStr = getDateString(user.planStartDate || user.createdAt);
+    const firstCycleComplete = user.pausedFromOnboarding === true
+      && totalMemorized > 0
+      && pagesForReview.every(
+          p => p.lastReviewedDate && getDateString(p.lastReviewedDate) >= planStartStr
+        );
+
+    const percentage = ((totalMemorized / 604) * 100).toFixed(1);
+    const newMemorizationComplete = isHafiz || newPagesCompletedToday >= targetNewPages;
+    const reviewComplete = reviewsCompletedToday >= dailyReviewTarget || pagesForReview.length === 0;
+    const todayComplete = totalMemorized > 0 && newMemorizationComplete && reviewComplete;
+
+    const activeDaysPerWeek = 7 - offDays.length;
+    const effectiveDailyPages = (user.dailyNewPages || 1) * (activeDaysPerWeek / 7);
+    const estimatedDays = !isHafiz && effectiveDailyPages > 0
+      ? Math.ceil((604 - totalMemorized) / effectiveDailyPages)
+      : 0;
+
+    const isViewOnlyComplete = todayComplete || (isHafiz && dailyReviewTarget === 0);
+    if (isViewOnlyComplete && user.lastActiveDate
+        && getDateString(user.lastActiveDate) !== todayString
+        && isStreakContinued(user.lastActiveDate, offDays)) {
+      await User.findByIdAndUpdate(userId, { lastActiveDate: new Date() });
+    }
+
+    res.status(200).json({
+      success: true,
+      data: {
+        isOffDay: false,
+        isHafiz,
+        firstCycleComplete,
+        newPages: newPageNums.map(toNewPageDto),
+        reviewPages: reviewPages.map(toReviewPageDto),
+        extraNewPages: extraNewPageNums.map(toNewPageDto),
+        extraReviewPages: extraReviewPages.map(toReviewPageDto),
+        recentReviewPages: cappedRecentPages.map(toReviewPageDto),
+        continuationPage: continuationPageNum ? toNewPageDto(continuationPageNum) : null,
+        stats: {
+          totalMemorized, totalPages: 604,
+          percentage: parseFloat(percentage),
+          currentStreak: user.currentStreak || 0,
+          dailyNewPages: user.dailyNewPages || 1,
+          reviewIntensity: user.reviewIntensity || 'standard',
+          recentReviewCount: user.recentReviewCount ?? null,
+          cycleReviewCount: user.cycleReviewCount ?? null,
+          newPagesCompletedToday, reviewsCompletedToday,
+          targetNewPages, dailyReviewTarget,
+          cycleReviewTarget, recentReviewTarget, dailyReviewTotal,
+          newMemorizationComplete, reviewComplete, todayComplete,
+          isHafiz, estimatedDays,
+        },
+      },
+    });
+  } catch (error) {
+    console.error('GetTodayTasks error:', error);
+    res.status(500).json({ success: false, message: "Error fetching today's tasks", error: error.message });
+  }
+};
+
+exports.markPageComplete = async (req, res) => {
+  try {
+    const userId = req.user._id;
+    const { pageNumber, type, alreadyKnow } = req.body;
+
+    if (!pageNumber || pageNumber < 1 || pageNumber > 604) {
+      return res.status(400).json({ success: false, message: 'Invalid page number' });
+    }
+
+    const now = new Date();
+
+    if (type === 'new') {
+
+      const memorizedDate = alreadyKnow
+        ? (() => { const d = new Date(now); d.setUTCDate(d.getUTCDate() - 1); d.setUTCHours(0, 0, 0, 0); return d; })()
+        : now;
+      await UserProgress.findOneAndUpdate(
+        { userId, pageNumber },
+        { $set: { status: 'memorized', memorizedDate, lastReviewedDate: memorizedDate }, $inc: { reviewCount: 1 } },
+        { upsert: true, new: true }
+      );
+    } else if (type === 'review') {
+      const result = await UserProgress.findOneAndUpdate(
+        { userId, pageNumber, status: 'memorized' },
+        { $set: { lastReviewedDate: now }, $inc: { reviewCount: 1 } },
+        { new: true }
+      );
+      if (!result) {
+        return res.status(400).json({ success: false, message: 'Page not found or not memorized yet' });
+      }
+    } else {
+      return res.status(400).json({ success: false, message: 'type must be "new" or "review"' });
+    }
+
+    const user = await User.findById(userId);
+    const todayString = getDateString(now);
+    const offDays = user.offDays || [];
+
+    let newStreak = user.currentStreak || 0;
+    if (!user.lastActiveDate) {
+      newStreak = 1;
+    } else if (getDateString(user.lastActiveDate) === todayString) {
+      newStreak = user.currentStreak || 1;
+    } else if (isStreakContinued(user.lastActiveDate, offDays)) {
+      newStreak = (user.currentStreak || 0) + 1;
+    } else {
+      newStreak = 1;
+    }
+
+    await User.findByIdAndUpdate(userId, { lastActiveDate: now, currentStreak: newStreak });
+
+    res.status(200).json({
+      success: true,
+      message: `Page ${pageNumber} marked as ${type === 'new' ? 'memorized' : 'reviewed'}`,
+      data: { pageNumber, type, newStreak },
+    });
+  } catch (error) {
+    console.error('MarkPageComplete error:', error);
+    res.status(500).json({ success: false, message: 'Error marking page complete', error: error.message });
+  }
+};
+
+exports.unmarkPageComplete = async (req, res) => {
+  try {
+    const userId = req.user._id;
+    const { pageNumber, type } = req.body;
+
+    if (!pageNumber || pageNumber < 1 || pageNumber > 604) {
+      return res.status(400).json({ success: false, message: 'Invalid page number' });
+    }
+
+    if (type === 'new') {
+      const todayStart = new Date();
+      todayStart.setUTCHours(0, 0, 0, 0);
+      const tomorrowStart = new Date(todayStart);
+      tomorrowStart.setUTCDate(tomorrowStart.getUTCDate() + 1);
+
+      const deleted = await UserProgress.findOneAndDelete({
+        userId,
+        pageNumber,
+        memorizedDate: { $gte: todayStart, $lt: tomorrowStart },
+      });
+      if (!deleted) {
+        return res.status(400).json({ success: false, message: 'Page was not memorized today' });
+      }
+    } else if (type === 'review') {
+      const progress = await UserProgress.findOne({ userId, pageNumber, status: 'memorized' });
+      if (!progress) {
+        return res.status(400).json({ success: false, message: 'Page not found or not memorized' });
+      }
+      const yesterday = new Date();
+      yesterday.setUTCDate(yesterday.getUTCDate() - 1);
+      yesterday.setUTCHours(0, 0, 0, 0);
+      await UserProgress.updateOne(
+        { userId, pageNumber },
+        {
+          $set: {
+            lastReviewedDate: yesterday,
+            reviewCount: Math.max(0, (progress.reviewCount || 0) - 1),
+          },
+        }
+      );
+    } else {
+      return res.status(400).json({ success: false, message: 'type must be "new" or "review"' });
+    }
+
+    res.status(200).json({ success: true, message: `Page ${pageNumber} completion undone` });
+  } catch (error) {
+    console.error('UnmarkPageComplete error:', error);
+    res.status(500).json({ success: false, message: 'Error undoing completion', error: error.message });
+  }
+};
+
+exports.getEstimate = async (req, res) => {
+  try {
+    const userId = req.user._id;
+    const user = await User.findById(userId);
+
+    const dailyPages = parseFloat(req.query.dailyPages) || user.dailyNewPages || 1;
+    if (isNaN(dailyPages) || dailyPages < 0.5 || dailyPages > 10) {
+      return res.status(400).json({ success: false, message: 'dailyPages must be between 0.5 and 10' });
+    }
+
+    const totalMemorized = await UserProgress.countDocuments({ userId, status: 'memorized' });
+    const remainingPages = 604 - totalMemorized;
+
+    const offDays = user.offDays || [];
+    const activeDaysPerWeek = 7 - offDays.length;
+    const effectiveDailyPages = dailyPages * (activeDaysPerWeek / 7);
+
+    const estimatedDays = effectiveDailyPages > 0 ? Math.ceil(remainingPages / effectiveDailyPages) : null;
+    const estimatedWeeks = estimatedDays ? Math.round(estimatedDays / 7) : null;
+    const estimatedMonths = estimatedDays ? Math.round(estimatedDays / 30) : null;
+    const estimatedYears = estimatedDays ? parseFloat((estimatedDays / 365).toFixed(1)) : null;
+
+    res.status(200).json({
+      success: true,
+      data: {
+        totalMemorized, remainingPages,
+        dailyPages, activeDaysPerWeek,
+        estimatedDays, estimatedWeeks, estimatedMonths, estimatedYears,
+      },
+    });
+  } catch (error) {
+    console.error('GetEstimate error:', error);
+    res.status(500).json({ success: false, message: 'Error calculating estimate', error: error.message });
+  }
+};
+
+exports.getWeekPlan = async (req, res) => {
+  try {
+    const userId = req.user._id;
+    const user = await User.findById(userId);
+
+    const allMemorizedPages = await UserProgress.find({ userId, status: 'memorized' });
+    const totalMemorized = allMemorizedPages.length;
+    const memorizedPageNumbers = new Set(allMemorizedPages.map(p => p.pageNumber));
+    const isHafiz = totalMemorized === 604;
+
+    const offDays = user.offDays || [];
+    const planStart = user.planStartDate || user.createdAt;
+    const dailyNewPages = user.dailyNewPages || 1;
+    const reviewIntensity = user.reviewIntensity || 'standard';
+
+    const unmemorizedPages = [];
+    if (!isHafiz) {
+      for (let page = 1; page <= 604; page++) {
+        if (!memorizedPageNumbers.has(page)) unmemorizedPages.push(page);
+      }
+    }
+
+    const today = new Date();
+    today.setUTCHours(0, 0, 0, 0);
+    const todayString = getDateString(today);
+
+    const isTodayOffDay = offDays.includes(today.getUTCDay());
+    const todayNewTarget = (isHafiz || user.pauseNewMemorization || isTodayOffDay)
+      ? 0
+      : computeNewPageTargetForDate(dailyNewPages, planStart, today);
+    const newPagesCompletedToday = allMemorizedPages.filter(
+      p => p.memorizedDate && getDateString(p.memorizedDate) === todayString
+    ).length;
+
+    const plan = [];
+    let cumulativeNew = Math.max(0, todayNewTarget - newPagesCompletedToday);
+    const pageNumsForMeta = [];
+
+    const maxRecent = user.recentReviewCount !== null && user.recentReviewCount !== undefined
+      ? user.recentReviewCount
+      : Math.max(3, Math.min(Math.ceil(dailyNewPages * 3), 6));
+    const recentNewWindow = [];
+    if (!isHafiz && !user.pauseNewMemorization && !isTodayOffDay && todayNewTarget > 0) {
+      recentNewWindow.push(todayNewTarget);
+    }
+
+    for (let i = 1; i <= 6; i++) {
+      const date = new Date(today);
+      date.setUTCDate(today.getUTCDate() + i);
+      const dayOfWeek = date.getUTCDay();
+
+      if (offDays.includes(dayOfWeek)) {
+        plan.push({
+          date: getDateString(date),
+          dayName: DAY_NAMES[dayOfWeek],
+          isOffDay: true,
+          newPagesCount: 0,
+          reviewPagesCount: 0,
+          newPage: null,
+        });
+        continue;
+      }
+
+      const newTarget = (isHafiz || user.pauseNewMemorization) ? 0 : computeNewPageTargetForDate(dailyNewPages, planStart, date);
+
+      const newPagesForDay = [];
+      if (newTarget > 0) {
+        for (let j = 0; j < newTarget && (cumulativeNew + j) < unmemorizedPages.length; j++) {
+          const pg = unmemorizedPages[cumulativeNew + j];
+          newPagesForDay.push(pg);
+          pageNumsForMeta.push(pg);
+        }
+      }
+
+      const projectedMemorized = Math.min(604, totalMemorized + cumulativeNew);
+
+      const cycleTarget = (user.cycleReviewCount !== null && user.cycleReviewCount !== undefined)
+        ? user.cycleReviewCount
+        : computeDailyReviewTarget(projectedMemorized, reviewIntensity);
+
+      const recentTarget = isHafiz ? 0 : Math.min(maxRecent, recentNewWindow.reduce((a, b) => a + b, 0));
+
+      plan.push({
+        date: getDateString(date),
+        dayName: DAY_NAMES[dayOfWeek],
+        isOffDay: false,
+        newPagesCount: newTarget,
+        reviewPagesCount: cycleTarget + recentTarget,
+        newPagesForDay,
+      });
+
+      cumulativeNew += newTarget;
+      recentNewWindow.push(newTarget);
+      while (recentNewWindow.length > 3) recentNewWindow.shift();
+    }
+
+    const metaMap = await getMetadataMap(pageNumsForMeta);
+
+    const enrichedPlan = plan.map(day => ({
+      ...day,
+      newPageInfo: day.newPagesForDay?.[0] ? (() => {
+        const pg = day.newPagesForDay[0];
+        const meta = metaMap[pg];
+        return {
+          pageNumber: pg,
+          juzNumber: meta?.juzNumber || 1,
+          surahName: meta?.surahName || 'Unknown',
+          surahNameArabic: meta?.surahNameArabic || '',
+          surahs: meta?.surahs ?? [{ name: meta?.surahName ?? 'Unknown', nameArabic: meta?.surahNameArabic ?? '' }],
+        };
+      })() : null,
+      newPagesInfo: (day.newPagesForDay || []).map(pg => {
+        const meta = metaMap[pg];
+        return {
+          pageNumber: pg,
+          juzNumber: meta?.juzNumber || 1,
+          surahName: meta?.surahName || 'Unknown',
+          surahNameArabic: meta?.surahNameArabic || '',
+          surahs: meta?.surahs ?? [{ name: meta?.surahName ?? 'Unknown', nameArabic: meta?.surahNameArabic ?? '' }],
+        };
+      }),
+    }));
+
+    res.status(200).json({ success: true, data: enrichedPlan });
+  } catch (error) {
+    console.error('GetWeekPlan error:', error);
+    res.status(500).json({ success: false, message: 'Error fetching week plan', error: error.message });
+  }
+};
+
+exports.getAllProgress = async (req, res) => {
+  try {
+    const userId = req.user._id;
+    const progress = await UserProgress.find({ userId, status: 'memorized' }).sort({ pageNumber: 1 });
+    const pageNumbers = progress.map(p => p.pageNumber);
+
+    const memorizedByDate = {};
+    for (const p of progress) {
+      const dateStr = p.memorizedDate
+        ? getDateString(p.memorizedDate)
+        : getDateString(p.createdAt);
+      memorizedByDate[dateStr] = (memorizedByDate[dateStr] || 0) + 1;
+    }
+
+    res.status(200).json({
+      success: true,
+      data: {
+        memorizedPages: pageNumbers,
+        totalMemorized: pageNumbers.length,
+        percentage: ((pageNumbers.length / 604) * 100).toFixed(1),
+        memorizedByDate,
+      },
+    });
+  } catch (error) {
+    console.error('GetAllProgress error:', error);
+    res.status(500).json({ success: false, message: 'Error fetching progress', error: error.message });
+  }
+};
+
+exports.updateMemorized = async (req, res) => {
+  try {
+    const userId = req.user._id;
+    const { memorizedPages } = req.body;
+
+    if (!Array.isArray(memorizedPages)) {
+      return res.status(400).json({ success: false, message: 'memorizedPages must be an array' });
+    }
+
+    const newPageSet = new Set(memorizedPages.map(Number).filter(n => n >= 1 && n <= 604));
+
+    await UserProgress.deleteMany({
+      userId,
+      status: 'memorized',
+      pageNumber: { $nin: Array.from(newPageSet) },
+    });
+
+    if (newPageSet.size > 0) {
+      const yesterday = new Date();
+      yesterday.setUTCHours(0, 0, 0, 0);
+      yesterday.setDate(yesterday.getDate() - 1);
+
+      const bulkOps = Array.from(newPageSet).map(pageNumber => ({
+        updateOne: {
+          filter: { userId, pageNumber },
+          update: {
+            $set: { status: 'memorized' },
+            $setOnInsert: {
+              userId,
+              pageNumber,
+              memorizedDate: yesterday,
+              lastReviewedDate: yesterday,
+              reviewCount: 0,
+            },
+          },
+          upsert: true,
+        },
+      }));
+
+      await UserProgress.bulkWrite(bulkOps);
+    }
+
+    res.status(200).json({
+      success: true,
+      message: 'Memorized pages updated',
+      data: { memorizedCount: newPageSet.size },
+    });
+  } catch (error) {
+    console.error('UpdateMemorized error:', error);
+    res.status(500).json({ success: false, message: 'Error updating memorized pages', error: error.message });
+  }
+};
+
+exports.resetProgress = async (req, res) => {
+  try {
+    const userId = req.user._id;
+
+    await UserProgress.deleteMany({ userId });
+    await User.findByIdAndUpdate(userId, {
+      currentStreak: 0,
+      lastActiveDate: null,
+      planStartDate: new Date(),
+    });
+
+    res.status(200).json({ success: true, message: 'Progress reset successfully' });
+  } catch (error) {
+    console.error('ResetProgress error:', error);
+    res.status(500).json({ success: false, message: 'Error resetting progress', error: error.message });
+  }
+};
+
+exports.getJuzProgress = async (req, res) => {
+  try {
+    const userId = req.user._id;
+    const memorizedProgress = await UserProgress.find({ userId, status: 'memorized' }, { pageNumber: 1, lastReviewedDate: 1 });
+    const memorizedPages = new Set(memorizedProgress.map(p => p.pageNumber));
+    const reviewDateByPage = Object.fromEntries(memorizedProgress.map(p => [p.pageNumber, p.lastReviewedDate]));
+    const now = new Date();
+
+    const juzRanges = [
+      { juz: 1,  start: 1,   end: 21  },
+      { juz: 2,  start: 22,  end: 41  },
+      { juz: 3,  start: 42,  end: 61  },
+      { juz: 4,  start: 62,  end: 81  },
+      { juz: 5,  start: 82,  end: 101 },
+      { juz: 6,  start: 102, end: 121 },
+      { juz: 7,  start: 122, end: 141 },
+      { juz: 8,  start: 142, end: 161 },
+      { juz: 9,  start: 162, end: 181 },
+      { juz: 10, start: 182, end: 201 },
+      { juz: 11, start: 202, end: 221 },
+      { juz: 12, start: 222, end: 241 },
+      { juz: 13, start: 242, end: 261 },
+      { juz: 14, start: 262, end: 281 },
+      { juz: 15, start: 282, end: 301 },
+      { juz: 16, start: 302, end: 321 },
+      { juz: 17, start: 322, end: 341 },
+      { juz: 18, start: 342, end: 361 },
+      { juz: 19, start: 362, end: 381 },
+      { juz: 20, start: 382, end: 401 },
+      { juz: 21, start: 402, end: 421 },
+      { juz: 22, start: 422, end: 441 },
+      { juz: 23, start: 442, end: 461 },
+      { juz: 24, start: 462, end: 481 },
+      { juz: 25, start: 482, end: 501 },
+      { juz: 26, start: 502, end: 521 },
+      { juz: 27, start: 522, end: 541 },
+      { juz: 28, start: 542, end: 561 },
+      { juz: 29, start: 562, end: 581 },
+      { juz: 30, start: 582, end: 604 },
+    ];
+
+    const juzProgress = juzRanges.map(({ juz, start, end }) => {
+      const totalPages = end - start + 1;
+      let memorizedInJuz = 0;
+      for (let p = start; p <= end; p++) {
+        if (memorizedPages.has(p)) memorizedInJuz++;
+      }
+
+      let oldestReview = null;
+      for (let p = start; p <= end; p++) {
+        if (!memorizedPages.has(p)) continue;
+        const rd = reviewDateByPage[p];
+        if (!rd || !oldestReview || rd < oldestReview) oldestReview = rd;
+      }
+      const oldestReviewDaysAgo = oldestReview
+        ? Math.floor((now - new Date(oldestReview)) / MS_PER_DAY)
+        : null;
+
+      return {
+        juzNumber: juz, startPage: start, endPage: end,
+        totalPages, memorizedPages: memorizedInJuz,
+        percentage: Math.round((memorizedInJuz / totalPages) * 100),
+        isComplete: memorizedInJuz === totalPages,
+        oldestReviewDaysAgo,
+      };
+    });
+
+    res.status(200).json({ success: true, data: juzProgress });
+  } catch (error) {
+    console.error('GetJuzProgress error:', error);
+    res.status(500).json({ success: false, message: 'Error fetching Juz progress', error: error.message });
+  }
+};
