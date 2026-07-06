@@ -121,16 +121,46 @@
     "fmtPageRange": "Pages {{start}}–{{end}}",
     "fmtPagesMulti": "Pages {{nums}}",
     "quotes": [
-      { "text": "The best among you (Muslims) are those who learn the Qur'an and teach it.", "source": "Sahih Al-Bukhari 5027" },
-      { "text": "Whoever recites a letter from the Book of Allah will receive one good deed worth ten times its value.", "source": "Tirmidhi 2910" },
-      { "text": "The Quran is a healing for what is in the hearts.", "source": "Quran 10:57" },
-      { "text": "Indeed, this Qur'an guides to that which is most suitable.", "source": "Quran 17:9" },
-      { "text": "And We have certainly made the Qur'an easy for remembrance, so is there any who will remember?", "source": "Quran 54:17" },
-      { "text": "Recite the Quran for it will come as an intercessor for its reciters on the Day of Resurrection.", "source": "Muslim 804" },
-      { "text": "The one who is skilled in the Quran will be with the honourable, righteous scribes.", "source": "Bukhari & Muslim" },
-      { "text": "It will be said to the companion of the Quran: Recite and rise in status.", "source": "Abu Dawud 1464" },
-      { "text": "The heart that has no Quran in it is like a ruined house.", "source": "Tirmidhi" },
-      { "text": "Hold fast to the Quran, for it is the rope of Allah extended to you from the heaven to the earth.", "source": "Tabarani" }
+      {
+        "text": "The best among you (Muslims) are those who learn the Qur'an and teach it.",
+        "source": "Sahih Al-Bukhari 5027"
+      },
+      {
+        "text": "Whoever recites a letter from the Book of Allah will receive one good deed worth ten times its value.",
+        "source": "Tirmidhi 2910"
+      },
+      {
+        "text": "The Quran is a healing for what is in the hearts.",
+        "source": "Quran 10:57"
+      },
+      {
+        "text": "Indeed, this Qur'an guides to that which is most suitable.",
+        "source": "Quran 17:9"
+      },
+      {
+        "text": "And We have certainly made the Qur'an easy for remembrance, so is there any who will remember?",
+        "source": "Quran 54:17"
+      },
+      {
+        "text": "Recite the Quran for it will come as an intercessor for its reciters on the Day of Resurrection.",
+        "source": "Muslim 804"
+      },
+      {
+        "text": "The one who is skilled in the Quran will be with the honourable, righteous scribes.",
+        "source": "Bukhari & Muslim"
+      },
+      {
+        "text": "It will be said to the companion of the Quran: Recite and rise in status.",
+        "source": "Abu Dawud 1464"
+      },
+      {
+        "text": "The heart that has no Quran in it is like a ruined house.",
+        "source": "Tirmidhi"
+      },
+      {
+        "text": "Hold fast to the Quran, for it is the rope of Allah extended to you from the heaven to the earth.",
+        "source": "Tabarani"
+      }
     ],
     "tips": [
       "Connect verses conceptually. Don't just memorize sounds — try to understand the flow and logical progression.",
@@ -147,13 +177,34 @@
     "openCard": "How to memorize this page",
     "close": "Got it",
     "steps": [
-      { "title": "Listen first", "body": "Play the page from a reciter a few times while following along with the text, to get the correct pronunciation (tajweed) into your ear." },
-      { "title": "Understand it", "body": "Read the tafsir so the words carry meaning, not just sound." },
-      { "title": "Break it up", "body": "Memorize a few lines (or one ayah) at a time, never the whole page at once." },
-      { "title": "Repeat aloud", "body": "Say each small piece out loud until it flows smoothly." },
-      { "title": "Test yourself", "body": "Cover the text and recite the piece from memory; peek only to fix a slip, then test again. This self-testing is the most important step for long-term memory." },
-      { "title": "Connect", "body": "Join the pieces together, and link the start of the new page to the end of the previous one." },
-      { "title": "Recite & mark done", "body": "Recite the whole page from memory, then mark it memorized. Tip: review it again before sleep and after Fajr — the app then schedules it for spaced review." }
+      {
+        "title": "Listen first",
+        "body": "Play the page from a reciter a few times while following along with the text, to get the correct pronunciation (tajweed) into your ear."
+      },
+      {
+        "title": "Understand it",
+        "body": "Read the tafsir so the words carry meaning, not just sound."
+      },
+      {
+        "title": "Break it up",
+        "body": "Memorize a few lines (or one ayah) at a time, never the whole page at once."
+      },
+      {
+        "title": "Repeat aloud",
+        "body": "Say each small piece out loud until it flows smoothly."
+      },
+      {
+        "title": "Test yourself",
+        "body": "Cover the text and recite the piece from memory; peek only to fix a slip, then test again. This self-testing is the most important step for long-term memory."
+      },
+      {
+        "title": "Connect",
+        "body": "Join the pieces together, and link the start of the new page to the end of the previous one."
+      },
+      {
+        "title": "Recite & mark done",
+        "body": "Recite the whole page from memory, then mark it memorized. Tip: review it again before sleep and after Fajr — the app then schedules it for spaced review."
+      }
     ]
   },
   "tour": {
@@ -734,24 +785,36 @@
     "faq": {
       "title": "Frequently Asked Questions",
       "items": [
-        { "q": "Is Quran Tracker free to use?", "a": "Yes, completely free. All core features — personalized plans, spaced repetition reviews, and progress tracking — are available at no cost." },
-        { "q": "How does the smart review system work?", "a": "Pages are scheduled for revision based on how recently you memorized them. Newer pages appear more often, with intervals growing as your retention strengthens — grounded in the Ebbinghaus Forgetting Curve." },
-        { "q": "Can I track specific Surahs or page ranges?", "a": "Yes. During onboarding and in Settings you can select memorized content by Juz, by Surah, or by custom page ranges." },
-        { "q": "What happens if I miss a day?", "a": "No penalties. Your daily plan stays the same — missed review pages simply join the next cycle. Consistency matters more than perfection." }
+        {
+          "q": "Is SmartHifz free to use?",
+          "a": "Yes, completely free. All core features — personalized plans, spaced repetition reviews, and progress tracking — are available at no cost."
+        },
+        {
+          "q": "How does the smart review system work?",
+          "a": "Pages are scheduled for revision based on how recently you memorized them. Newer pages appear more often, with intervals growing as your retention strengthens — grounded in the Ebbinghaus Forgetting Curve."
+        },
+        {
+          "q": "Can I track specific Surahs or page ranges?",
+          "a": "Yes. During onboarding and in Settings you can select memorized content by Juz, by Surah, or by custom page ranges."
+        },
+        {
+          "q": "What happens if I miss a day?",
+          "a": "No penalties. Your daily plan stays the same — missed review pages simply join the next cycle. Consistency matters more than perfection."
+        }
       ]
     },
     "footer": {
-      "copyright": "© 2025 Quran Tracker. Dedicated to the pursuit of Hifz.",
+      "copyright": "© 2025 SmartHifz. Dedicated to the pursuit of Hifz.",
       "privacy": "Privacy Policy",
       "terms": "Terms of Service",
       "contact": "Contact Support"
     }
   },
   "about": {
-    "title": "About Quran Tracker",
+    "title": "About SmartHifz",
     "subtitle": "A digital companion for your Hifz journey",
     "missionTitle": "Our Mission",
-    "missionText": "Quran Tracker is built to help every Muslim who has ever felt overwhelmed by the task of memorizing the Quran. By combining the classical Islamic tradition of Muraja'ah (مراجعة) with modern cognitive science, we make daily Hifz sustainable, measurable, and spiritually fulfilling.",
+    "missionText": "SmartHifz is built to help every Muslim who has ever felt overwhelmed by the task of memorizing the Quran. By combining the classical Islamic tradition of Muraja'ah (مراجعة) with modern cognitive science, we make daily Hifz sustainable, measurable, and spiritually fulfilling.",
     "scienceTitle": "Grounded in Science and Tradition",
     "scienceText": "The review system is based on Ebbinghaus's Forgetting Curve (1885) and spaced repetition (Pimsleur 1967, Leitner 1972): review intervals grow as retention strengthens. The Islamic concept of Muraja'ah — systematic revision — is the spiritual root of what this app does digitally.",
     "howItWorksTitle": "How It Works",
